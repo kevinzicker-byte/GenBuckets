@@ -21,29 +21,15 @@ public final class BucketRegistry {
     public void load() {
         buckets.clear();
 
-        ConfigurationSection itemsSection = plugin.getConfig().getConfigurationSection("items");
-        Material baseMaterial = Material.LAVA_BUCKET;
-        if (itemsSection != null) {
-            ConfigurationSection baseSection = itemsSection.getConfigurationSection("base");
-            if (baseSection != null) {
-                String baseMatName = baseSection.getString("material", "LAVA_BUCKET");
-                Material parsed = Material.matchMaterial(baseMatName);
-                if (parsed != null) {
-                    baseMaterial = parsed;
-                }
-            }
-        }
-
         ConfigurationSection section = plugin.getConfig().getConfigurationSection("buckets");
         if (section == null) {
+            plugin.getLogger().warning("No buckets section found in config.");
             return;
         }
 
         for (String id : section.getKeys(false)) {
             ConfigurationSection s = section.getConfigurationSection(id);
-            if (s == null) {
-                continue;
-            }
+            if (s == null) continue;
 
             boolean enabled = s.getBoolean("enabled", true);
 
@@ -57,19 +43,20 @@ public final class BucketRegistry {
             GenMode mode;
             try {
                 mode = GenMode.valueOf(modeStr.toUpperCase(Locale.ROOT));
-            } catch (IllegalArgumentException ex) {
+            } catch (Exception e) {
                 mode = GenMode.HORIZONTAL;
             }
 
             int slot = s.getInt("slot", 0);
             int maxLen = s.getInt("max_length", 0);
+
             String name = s.getString("name", "&fGen Bucket");
             List<String> lore = s.getStringList("lore");
 
             GenBucketDefinition def = new GenBucketDefinition(
                     id,
                     enabled,
-                    baseMaterial,
+                    Material.LAVA_BUCKET,
                     placeMaterial,
                     mode,
                     slot,
@@ -89,15 +76,22 @@ public final class BucketRegistry {
     }
 
     public Optional<GenBucketDefinition> get(String id) {
-        if (id == null) {
-            return Optional.empty();
-        }
+        if (id == null) return Optional.empty();
         return Optional.ofNullable(buckets.get(id.toLowerCase(Locale.ROOT)));
     }
 
     public ItemStack createItem(GenBucketDefinition def, int amount) {
+
         int finalAmount = Math.max(1, amount);
-        ItemStack item = new ItemStack(def.baseMaterial(), finalAmount);
+
+        String baseMatName = plugin.getConfig().getString("items.base.material", "LAVA_BUCKET");
+        Material baseMat = Material.matchMaterial(baseMatName);
+
+        if (baseMat == null) {
+            baseMat = Material.LAVA_BUCKET;
+        }
+
+        ItemStack item = new ItemStack(baseMat, finalAmount);
 
         ItemMeta meta = item.getItemMeta();
         if (meta == null) {
@@ -110,13 +104,16 @@ public final class BucketRegistry {
         for (String line : def.lore()) {
             lore.add(color(line));
         }
+
         meta.setLore(lore);
 
         item.setItemMeta(meta);
+
         return item;
     }
 
     public Optional<GenBucketDefinition> match(ItemStack item) {
+
         if (item == null || item.getType().isAir()) {
             return Optional.empty();
         }
@@ -133,14 +130,19 @@ public final class BucketRegistry {
         String heldName = meta.getDisplayName();
 
         for (GenBucketDefinition def : buckets.values()) {
+
             ItemStack test = createItem(def, 1);
-            if (!test.hasItemMeta()) {
-                continue;
-            }
+
+            if (!test.hasItemMeta()) continue;
 
             ItemMeta testMeta = test.getItemMeta();
-            if (testMeta != null && testMeta.hasDisplayName() && heldName.equals(testMeta.getDisplayName())) {
-                return Optional.of(def);
+
+            if (testMeta != null && testMeta.hasDisplayName()) {
+
+                if (heldName.equals(testMeta.getDisplayName())) {
+                    return Optional.of(def);
+                }
+
             }
         }
 
