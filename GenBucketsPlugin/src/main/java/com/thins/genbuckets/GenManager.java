@@ -14,11 +14,13 @@ public final class GenManager {
     }
 
     public boolean startGen(Player player, Block clickedBlock, BlockFace clickedFace, GenBucketDefinition def) {
-        if (clickedBlock == null || clickedFace == null || def == null) {
+        if (player == null || clickedBlock == null || clickedFace == null || def == null) {
             return false;
         }
 
-        Block start = findGenStart(clickedBlock, clickedFace, def);
+        BlockFace direction = getDirection(player, clickedFace, def.mode());
+        Block start = findGenStart(clickedBlock, direction, def);
+
         if (start == null) {
             return false;
         }
@@ -27,10 +29,20 @@ public final class GenManager {
             return false;
         }
 
+        // stop vertical-up from starting above max_y
+        if (def.mode() == GenMode.VERTICAL_UP && start.getY() > maxY()) {
+            return false;
+        }
+
+        // stop vertical-down from starting below min_y
+        if (def.mode() == GenMode.VERTICAL_DOWN && start.getY() < minY()) {
+            return false;
+        }
+
         start.setType(anchorBlock(), false);
 
         switch (def.mode()) {
-            case HORIZONTAL -> runHorizontal(start, clickedFace, def);
+            case HORIZONTAL -> runHorizontal(start, direction, def);
             case VERTICAL_UP -> runVertical(start, BlockFace.UP, def);
             case VERTICAL_DOWN -> runVertical(start, BlockFace.DOWN, def);
         }
@@ -42,12 +54,54 @@ public final class GenManager {
         return true;
     }
 
-    private Block findGenStart(Block clickedBlock, BlockFace clickedFace, GenBucketDefinition def) {
+    private BlockFace getDirection(Player player, BlockFace clickedFace, GenMode mode) {
+        if (mode != GenMode.HORIZONTAL) {
+            return clickedFace;
+        }
+
+        // Always make horizontal gens go toward the player.
+        // If the player clicked a side face, use that side face.
+        if (clickedFace == BlockFace.NORTH
+                || clickedFace == BlockFace.SOUTH
+                || clickedFace == BlockFace.EAST
+                || clickedFace == BlockFace.WEST) {
+            return clickedFace;
+        }
+
+        // If they clicked top/bottom, derive horizontal direction from player position.
+        double px = player.getLocation().getX();
+        double pz = player.getLocation().getZ();
+        double bx = player.getLocation().getBlockX() + 0.5;
+        double bz = player.getLocation().getBlockZ() + 0.5;
+
+        double dx = px - bx;
+        double dz = pz - bz;
+
+        if (Math.abs(dx) >= Math.abs(dz)) {
+            return dx >= 0 ? BlockFace.EAST : BlockFace.WEST;
+        } else {
+            return dz >= 0 ? BlockFace.SOUTH : BlockFace.NORTH;
+        }
+    }
+
+    private Block findGenStart(Block clickedBlock, BlockFace direction, GenBucketDefinition def) {
         Material finalMaterial = def.placeMaterial();
         Material anchor = anchorBlock();
 
-        // Always start from the block adjacent to the clicked face
-        Block current = clickedBlock.getRelative(clickedFace);
+        Material clickedType = clickedBlock.getType();
+        boolean clickedIsExistingLine = clickedType == anchor || clickedType == finalMaterial;
+
+        Block current;
+
+        if (def.mode() == GenMode.HORIZONTAL) {
+            current = clickedBlock.getRelative(direction);
+        } else {
+            if (clickedIsExistingLine) {
+                current = advance(clickedBlock, direction, def.mode());
+            } else {
+                current = clickedBlock.getRelative(direction);
+            }
+        }
 
         for (int i = 0; i < 512; i++) {
             Material type = current.getType();
@@ -56,9 +110,8 @@ public final class GenManager {
                 return current;
             }
 
-            // Chain gens: clicking old anchor or finished line continues outward
             if (type == anchor || type == finalMaterial) {
-                current = advance(current, clickedFace, def.mode());
+                current = advance(current, direction, def.mode());
                 continue;
             }
 
@@ -68,9 +121,9 @@ public final class GenManager {
         return null;
     }
 
-    private Block advance(Block current, BlockFace clickedFace, GenMode mode) {
+    private Block advance(Block current, BlockFace direction, GenMode mode) {
         return switch (mode) {
-            case HORIZONTAL -> current.getRelative(clickedFace);
+            case HORIZONTAL -> current.getRelative(direction);
             case VERTICAL_UP -> current.getRelative(BlockFace.UP);
             case VERTICAL_DOWN -> current.getRelative(BlockFace.DOWN);
         };
@@ -108,7 +161,6 @@ public final class GenManager {
 
             @Override
             public void run() {
-                // Stop instantly if anchor was broken
                 if (anchor.getType() != anchorBlock()) {
                     cancel();
                     return;
@@ -146,7 +198,6 @@ public final class GenManager {
 
             @Override
             public void run() {
-                // Stop instantly if anchor was broken
                 if (anchor.getType() != anchorBlock()) {
                     cancel();
                     return;
@@ -155,7 +206,7 @@ public final class GenManager {
                 Block next = current.getRelative(direction);
                 int y = next.getY();
 
-                // With max_y: 255, allow placing at 255 and stop before 256
+                // With max_y: 255, highest placed block is 255, so 256 stays open.
                 if (y < minY || y > maxY) {
                     finishAnchor(anchor, place);
                     cancel();
