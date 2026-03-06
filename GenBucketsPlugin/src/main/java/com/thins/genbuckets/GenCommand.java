@@ -55,18 +55,26 @@ public final class GenCommand implements CommandExecutor, TabCompleter {
                     sender.sendMessage(color("&cUsage: /gen give <player> <bucket> [amount]"));
                     return true;
                 }
+
                 Player target = Bukkit.getPlayerExact(args[1]);
                 if (target == null) {
                     sender.sendMessage(color("&cPlayer not found."));
                     return true;
                 }
+
                 int amount = 1;
                 if (args.length >= 4) {
-                    try { amount = Math.max(1, Integer.parseInt(args[3])); } catch (NumberFormatException ignored) {}
+                    try {
+                        amount = Math.max(1, Integer.parseInt(args[3]));
+                    } catch (NumberFormatException ignored) {
+                    }
                 }
+
+                final int giveAmount = amount;
+
                 plugin.getBucketRegistry().get(args[2]).ifPresentOrElse(def -> {
-                    target.getInventory().addItem(plugin.getBucketRegistry().createItem(def, amount));
-                    sender.sendMessage(color("&aGave &f" + target.getName() + " &ax" + amount + " &f" + def.id()));
+                    target.getInventory().addItem(plugin.getBucketRegistry().createItem(def, giveAmount));
+                    sender.sendMessage(color("&aGave &f" + target.getName() + " &ax" + giveAmount + " &f" + def.id()));
                 }, () -> sender.sendMessage(color("&cUnknown bucket.")));
             }
             case "debug" -> {
