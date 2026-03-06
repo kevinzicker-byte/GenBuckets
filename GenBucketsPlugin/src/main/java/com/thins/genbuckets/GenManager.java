@@ -23,13 +23,11 @@ public final class GenManager {
             return false;
         }
 
-        // Only block if the actual start spot is already an active anchor.
-        // This allows placing next to active gens.
-        if (start.getType() == plugin.getSettings().anchorBlock()) {
+        if (start.getType() == anchorBlock()) {
             return false;
         }
 
-        start.setType(plugin.getSettings().anchorBlock(), false);
+        start.setType(anchorBlock(), false);
 
         switch (def.mode()) {
             case HORIZONTAL -> runHorizontal(start, clickedFace, def);
@@ -46,23 +44,17 @@ public final class GenManager {
 
     private Block findGenStart(Block clickedBlock, BlockFace clickedFace, GenBucketDefinition def) {
         Material finalMaterial = def.placeMaterial();
-        Material anchor = plugin.getSettings().anchorBlock();
+        Material anchor = anchorBlock();
 
         Block current;
-
-        // Horizontal starts in the clicked face direction.
-        // Vertical up/down starts one block above/below if clicked on top/bottom,
-        // otherwise defaults to above/below the clicked block.
         if (def.mode() == GenMode.HORIZONTAL) {
             current = clickedBlock.getRelative(clickedFace);
         } else if (def.mode() == GenMode.VERTICAL_UP) {
-            current = (clickedFace == BlockFace.UP) ? clickedBlock.getRelative(BlockFace.UP) : clickedBlock.getRelative(BlockFace.UP);
+            current = clickedBlock.getRelative(BlockFace.UP);
         } else {
-            current = (clickedFace == BlockFace.DOWN) ? clickedBlock.getRelative(BlockFace.DOWN) : clickedBlock.getRelative(BlockFace.DOWN);
+            current = clickedBlock.getRelative(BlockFace.DOWN);
         }
 
-        // Chain-gen support:
-        // skip through anchors and already-generated blocks in the exact path.
         for (int i = 0; i < 512; i++) {
             Material type = current.getType();
 
@@ -70,19 +62,19 @@ public final class GenManager {
                 return current;
             }
 
+            // chain gens: click old anchor or finished line and keep moving forward
             if (type == anchor || type == finalMaterial) {
                 current = advance(current, clickedFace, def.mode());
                 continue;
             }
 
-            // Sand is real sand only now, so no sandstone handling needed.
             return null;
         }
 
         return null;
     }
 
-    private Block advance(Block current, Block clickedFace, GenMode mode) {
+    private Block advance(Block current, BlockFace clickedFace, GenMode mode) {
         return switch (mode) {
             case HORIZONTAL -> current.getRelative(clickedFace);
             case VERTICAL_UP -> current.getRelative(BlockFace.UP);
@@ -100,7 +92,7 @@ public final class GenManager {
 
     private boolean canContinueInto(Block block, Material finalMaterial) {
         Material type = block.getType();
-        Material anchor = plugin.getSettings().anchorBlock();
+        Material anchor = anchorBlock();
 
         return type.isAir()
                 || type == Material.CAVE_AIR
@@ -113,8 +105,8 @@ public final class GenManager {
 
     private void runHorizontal(Block anchor, BlockFace direction, GenBucketDefinition def) {
         final Material place = def.placeMaterial();
-        final int max = def.maxLength() > 0 ? def.maxLength() : plugin.getSettings().horizontalLength();
-        final long delay = plugin.getSettings().delayTicks();
+        final int max = def.maxLength() > 0 ? def.maxLength() : horizontalLength();
+        final long delay = delayTicks();
 
         new BukkitRunnable() {
             private Block current = anchor;
@@ -145,9 +137,9 @@ public final class GenManager {
 
     private void runVertical(Block anchor, BlockFace direction, GenBucketDefinition def) {
         final Material place = def.placeMaterial();
-        final int minY = plugin.getSettings().minY();
-        final int maxY = plugin.getSettings().maxY();
-        final long delay = plugin.getSettings().delayTicks();
+        final int minY = minY();
+        final int maxY = maxY();
+        final long delay = delayTicks();
 
         new BukkitRunnable() {
             private Block current = anchor;
@@ -176,10 +168,30 @@ public final class GenManager {
     }
 
     private void finishAnchor(Block anchor, Material finalMaterial) {
-        Material anchorType = plugin.getSettings().anchorBlock();
-
-        if (anchor.getType() == anchorType) {
+        if (anchor.getType() == anchorBlock()) {
             anchor.setType(finalMaterial, false);
         }
+    }
+
+    private Material anchorBlock() {
+        String raw = plugin.getConfig().getString("settings.anchor_block", "WHITE_WOOL");
+        Material mat = Material.matchMaterial(raw);
+        return mat != null ? mat : Material.WHITE_WOOL;
+    }
+
+    private int horizontalLength() {
+        return plugin.getConfig().getInt("settings.horizontal_length", 16);
+    }
+
+    private int minY() {
+        return plugin.getConfig().getInt("settings.min_y", 1);
+    }
+
+    private int maxY() {
+        return plugin.getConfig().getInt("settings.max_y", 255);
+    }
+
+    private long delayTicks() {
+        return plugin.getConfig().getLong("settings.delay_ticks", 2L);
     }
 }
