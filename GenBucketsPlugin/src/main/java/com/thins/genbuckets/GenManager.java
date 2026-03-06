@@ -46,14 +46,8 @@ public final class GenManager {
         Material finalMaterial = def.placeMaterial();
         Material anchor = anchorBlock();
 
-        Block current;
-        if (def.mode() == GenMode.HORIZONTAL) {
-            current = clickedBlock.getRelative(clickedFace);
-        } else if (def.mode() == GenMode.VERTICAL_UP) {
-            current = clickedBlock.getRelative(BlockFace.UP);
-        } else {
-            current = clickedBlock.getRelative(BlockFace.DOWN);
-        }
+        // Always start from the block adjacent to the clicked face
+        Block current = clickedBlock.getRelative(clickedFace);
 
         for (int i = 0; i < 512; i++) {
             Material type = current.getType();
@@ -62,6 +56,7 @@ public final class GenManager {
                 return current;
             }
 
+            // Chain gens: clicking old anchor or finished line continues outward
             if (type == anchor || type == finalMaterial) {
                 current = advance(current, clickedFace, def.mode());
                 continue;
@@ -113,7 +108,7 @@ public final class GenManager {
 
             @Override
             public void run() {
-                // stop instantly if anchor was broken/changed
+                // Stop instantly if anchor was broken
                 if (anchor.getType() != anchorBlock()) {
                     cancel();
                     return;
@@ -151,7 +146,7 @@ public final class GenManager {
 
             @Override
             public void run() {
-                // stop instantly if anchor was broken/changed
+                // Stop instantly if anchor was broken
                 if (anchor.getType() != anchorBlock()) {
                     cancel();
                     return;
@@ -160,6 +155,7 @@ public final class GenManager {
                 Block next = current.getRelative(direction);
                 int y = next.getY();
 
+                // With max_y: 255, allow placing at 255 and stop before 256
                 if (y < minY || y > maxY) {
                     finishAnchor(anchor, place);
                     cancel();
