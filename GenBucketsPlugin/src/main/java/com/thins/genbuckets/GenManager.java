@@ -8,116 +8,178 @@ import org.bukkit.scheduler.BukkitRunnable;
 
 public final class GenManager {
     private final GenBucketsPlugin plugin;
-    private final int minY;
-    private final int maxY;
-    private final int horizontalLength;
-    private final long delayTicks;
-    private final Material anchorMaterial;
 
     public GenManager(GenBucketsPlugin plugin) {
         this.plugin = plugin;
-        this.minY = plugin.getConfig().getInt("settings.min_y", 1);
-        this.maxY = plugin.getConfig().getInt("settings.max_y", 255);
-        this.horizontalLength = plugin.getConfig().getInt("settings.horizontal_length", 16);
-        this.delayTicks = plugin.getConfig().getLong("settings.delay_ticks", 2L);
-        Material material = Material.matchMaterial(plugin.getConfig().getString("settings.anchor_block", "WHITE_WOOL"));
-        this.anchorMaterial = material == null ? Material.WHITE_WOOL : material;
     }
 
-    public boolean startGen(Player player, Block clicked, BlockFace face, GenBucketDefinition def) {
-        Block start = findGenStart(clicked, face, def);
-        if (start == null) return false;
-        if (hasNearbyAnchor(start)) return false;
+    public boolean startGen(Player player, Block clickedBlock, BlockFace clickedFace, GenBucketDefinition def) {
+        if (clickedBlock == null || clickedFace == null || def == null) {
+            return false;
+        }
 
-        start.setType(anchorMaterial, false);
+        Block start = findGenStart(clickedBlock, clickedFace, def);
+        if (start == null) {
+            return false;
+        }
+
+        // Only block if the actual start spot is already an active anchor.
+        // This allows placing next to active gens.
+        if (start.getType() == plugin.getSettings().anchorBlock()) {
+            return false;
+        }
+
+        start.setType(plugin.getSettings().anchorBlock(), false);
 
         switch (def.mode()) {
-            case HORIZONTAL -> runHorizontal(start, face, def);
+            case HORIZONTAL -> runHorizontal(start, clickedFace, def);
             case VERTICAL_UP -> runVertical(start, BlockFace.UP, def);
             case VERTICAL_DOWN -> runVertical(start, BlockFace.DOWN, def);
         }
+
+        if (plugin.isDebug()) {
+            plugin.getLogger().info("Started gen " + def.id() + " at " + start.getLocation());
+        }
+
         return true;
     }
 
-    private Block findGenStart(Block clicked, BlockFace face, GenBucketDefinition def) {
-        Block current = switch (def.mode()) {
-            case HORIZONTAL -> clicked.getRelative(face);
-            case VERTICAL_UP, VERTICAL_DOWN -> (face == BlockFace.UP || face == BlockFace.DOWN) ? clicked.getRelative(face) : clicked.getRelative(BlockFace.UP);
-        };
+    private Block findGenStart(Block clickedBlock, BlockFace clickedFace, GenBucketDefinition def) {
+        Material finalMaterial = def.placeMaterial();
+        Material anchor = plugin.getSettings().anchorBlock();
 
-        for (int i = 0; i < 64; i++) {
+        Block current;
+
+        // Horizontal starts in the clicked face direction.
+        // Vertical up/down starts one block above/below if clicked on top/bottom,
+        // otherwise defaults to above/below the clicked block.
+        if (def.mode() == GenMode.HORIZONTAL) {
+            current = clickedBlock.getRelative(clickedFace);
+        } else if (def.mode() == GenMode.VERTICAL_UP) {
+            current = (clickedFace == BlockFace.UP) ? clickedBlock.getRelative(BlockFace.UP) : clickedBlock.getRelative(BlockFace.UP);
+        } else {
+            current = (clickedFace == BlockFace.DOWN) ? clickedBlock.getRelative(BlockFace.DOWN) : clickedBlock.getRelative(BlockFace.DOWN);
+        }
+
+        // Chain-gen support:
+        // skip through anchors and already-generated blocks in the exact path.
+        for (int i = 0; i < 512; i++) {
             Material type = current.getType();
-            if (type.isAir()) return current;
-            if (type == anchorMaterial || type == def.placeMaterial()) {
-                current = advance(current, face, def.mode());
+
+            if (isReplaceableStart(type)) {
+                return current;
+            }
+
+            if (type == anchor || type == finalMaterial) {
+                current = advance(current, clickedFace, def.mode());
                 continue;
             }
+
+            // Sand is real sand only now, so no sandstone handling needed.
             return null;
         }
+
         return null;
     }
 
-    private Block advance(Block current, BlockFace face, GenMode mode) {
+    private Block advance(Block current, Block clickedFace, GenMode mode) {
         return switch (mode) {
-            case HORIZONTAL -> current.getRelative(face);
+            case HORIZONTAL -> current.getRelative(clickedFace);
             case VERTICAL_UP -> current.getRelative(BlockFace.UP);
             case VERTICAL_DOWN -> current.getRelative(BlockFace.DOWN);
         };
     }
 
-    private boolean hasNearbyAnchor(Block block) {
-        if (block.getType() == anchorMaterial) return true;
-        for (BlockFace face : new BlockFace[]{BlockFace.UP, BlockFace.DOWN, BlockFace.NORTH, BlockFace.SOUTH, BlockFace.EAST, BlockFace.WEST}) {
-            if (block.getRelative(face).getType() == anchorMaterial) return true;
-        }
-        return false;
+    private boolean isReplaceableStart(Material type) {
+        return type.isAir()
+                || type == Material.CAVE_AIR
+                || type == Material.VOID_AIR
+                || type == Material.WATER
+                || type == Material.LAVA;
+    }
+
+    private boolean canContinueInto(Block block, Material finalMaterial) {
+        Material type = block.getType();
+        Material anchor = plugin.getSettings().anchorBlock();
+
+        return type.isAir()
+                || type == Material.CAVE_AIR
+                || type == Material.VOID_AIR
+                || type == Material.WATER
+                || type == Material.LAVA
+                || type == anchor
+                || type == finalMaterial;
     }
 
     private void runHorizontal(Block anchor, BlockFace direction, GenBucketDefinition def) {
-        final int limit = def.maxLength() > 0 ? def.maxLength() : horizontalLength;
+        final Material place = def.placeMaterial();
+        final int max = def.maxLength() > 0 ? def.maxLength() : plugin.getSettings().horizontalLength();
+        final long delay = plugin.getSettings().delayTicks();
+
         new BukkitRunnable() {
-            int placed = 0;
-            Block current = anchor;
+            private Block current = anchor;
+            private int placed = 0;
+
             @Override
             public void run() {
-                if (placed >= limit) {
-                    finishAnchor(anchor, def);
+                if (placed >= max) {
+                    finishAnchor(anchor, place);
                     cancel();
                     return;
                 }
+
                 Block next = current.getRelative(direction);
-                if (!next.getType().isAir()) {
-                    finishAnchor(anchor, def);
+
+                if (!canContinueInto(next, place)) {
+                    finishAnchor(anchor, place);
                     cancel();
                     return;
                 }
-                next.setType(def.placeMaterial(), false);
+
+                next.setType(place, false);
                 current = next;
                 placed++;
             }
-        }.runTaskTimer(plugin, delayTicks, delayTicks);
+        }.runTaskTimer(plugin, delay, delay);
     }
 
     private void runVertical(Block anchor, BlockFace direction, GenBucketDefinition def) {
+        final Material place = def.placeMaterial();
+        final int minY = plugin.getSettings().minY();
+        final int maxY = plugin.getSettings().maxY();
+        final long delay = plugin.getSettings().delayTicks();
+
         new BukkitRunnable() {
-            Block current = anchor;
+            private Block current = anchor;
+
             @Override
             public void run() {
                 Block next = current.getRelative(direction);
-                if (next.getY() < minY || next.getY() > maxY || !next.getType().isAir()) {
-                    finishAnchor(anchor, def);
+                int y = next.getY();
+
+                if (y < minY || y > maxY) {
+                    finishAnchor(anchor, place);
                     cancel();
                     return;
                 }
-                next.setType(def.placeMaterial(), false);
+
+                if (!canContinueInto(next, place)) {
+                    finishAnchor(anchor, place);
+                    cancel();
+                    return;
+                }
+
+                next.setType(place, false);
                 current = next;
             }
-        }.runTaskTimer(plugin, delayTicks, delayTicks);
+        }.runTaskTimer(plugin, delay, delay);
     }
 
-    private void finishAnchor(Block anchor, GenBucketDefinition def) {
-        if (anchor.getType() == anchorMaterial) {
-            anchor.setType(def.placeMaterial(), false);
+    private void finishAnchor(Block anchor, Material finalMaterial) {
+        Material anchorType = plugin.getSettings().anchorBlock();
+
+        if (anchor.getType() == anchorType) {
+            anchor.setType(finalMaterial, false);
         }
     }
 }
