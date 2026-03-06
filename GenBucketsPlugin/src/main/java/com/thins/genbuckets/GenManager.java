@@ -113,6 +113,12 @@ public final class GenManager {
 
             @Override
             public void run() {
+                // stop instantly if anchor was broken/changed
+                if (anchor.getType() != anchorBlock()) {
+                    cancel();
+                    return;
+                }
+
                 if (placed >= max) {
                     finishAnchor(anchor, place);
                     cancel();
@@ -145,6 +151,12 @@ public final class GenManager {
 
             @Override
             public void run() {
+                // stop instantly if anchor was broken/changed
+                if (anchor.getType() != anchorBlock()) {
+                    cancel();
+                    return;
+                }
+
                 Block next = current.getRelative(direction);
                 int y = next.getY();
 
