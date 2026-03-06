@@ -1,0 +1,24 @@
+name: GenBuckets
+version: 1.0.0
+main: com.thins.genbuckets.GenBucketsPlugin
+api-version: '1.21'
+authors: [OpenAI]
+commands:
+  gen:
+    description: Opens the gen bucket GUI and handles subcommands.
+    usage: /gen [help|reload|give|list|info|debug]
+permissions:
+  gen.use:
+    default: true
+  gen.help:
+    default: true
+  gen.reload:
+    default: op
+  gen.give:
+    default: op
+  gen.list:
+    default: true
+  gen.info:
+    default: true
+  gen.debug:
+    default: op

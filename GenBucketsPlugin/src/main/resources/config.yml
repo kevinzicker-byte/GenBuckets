@@ -1,0 +1,86 @@
+settings:
+  horizontal_length: 16
+  min_y: 1
+  max_y: 255
+  delay_ticks: 2
+  anchor_block: WHITE_WOOL
+  chain_gens: true
+  prevent_double_anchors: true
+  replace_anchor_on_early_stop: true
+  debug_default: false
+
+gui:
+  title: "&d&lGen Buckets"
+  size: 27
+  filler:
+    enabled: true
+    material: BLACK_STAINED_GLASS_PANE
+    name: " "
+
+buckets:
+  cobble_vertical:
+    enabled: true
+    material: COBBLESTONE
+    mode: VERTICAL_UP
+    slot: 10
+    name: "&fCobble &8» &7Vertical"
+    lore:
+      - "&7Generates upward"
+
+  cobble_horizontal:
+    enabled: true
+    material: COBBLESTONE
+    mode: HORIZONTAL
+    max_length: 16
+    slot: 11
+    name: "&fCobble &8» &7Horizontal"
+    lore:
+      - "&7Generates horizontally"
+
+  obby_vertical:
+    enabled: true
+    material: OBSIDIAN
+    mode: VERTICAL_UP
+    slot: 12
+    name: "&5Obby &8» &7Vertical"
+    lore:
+      - "&7Generates upward"
+
+  obby_horizontal:
+    enabled: true
+    material: OBSIDIAN
+    mode: HORIZONTAL
+    max_length: 16
+    slot: 13
+    name: "&5Obby &8» &7Horizontal"
+    lore:
+      - "&7Generates horizontally"
+
+  sand_vertical:
+    enabled: true
+    material: SAND
+    mode: VERTICAL_UP
+    slot: 14
+    name: "&eSand &8» &7Vertical"
+    lore:
+      - "&7Generates upward"
+
+  netherrack_horizontal:
+    enabled: true
+    material: NETHERRACK
+    mode: HORIZONTAL
+    max_length: 16
+    slot: 15
+    name: "&cNetherrack &8» &7Horizontal"
+    lore:
+      - "&7Generates horizontally"
+
+  lava_vertical_down:
+    enabled: true
+    material: LAVA_BUCKET
+    place_material: LAVA
+    mode: VERTICAL_DOWN
+    slot: 16
+    name: "&6Lava &8» &7Down"
+    lore:
+      - "&7Generates downward"
