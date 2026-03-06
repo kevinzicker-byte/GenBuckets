@@ -3,6 +3,8 @@ package com.thins.genbuckets;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.enchantments.Enchantment;
+import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
@@ -29,7 +31,9 @@ public final class BucketRegistry {
 
         for (String id : section.getKeys(false)) {
             ConfigurationSection s = section.getConfigurationSection(id);
-            if (s == null) continue;
+            if (s == null) {
+                continue;
+            }
 
             boolean enabled = s.getBoolean("enabled", true);
 
@@ -76,7 +80,9 @@ public final class BucketRegistry {
     }
 
     public Optional<GenBucketDefinition> get(String id) {
-        if (id == null) return Optional.empty();
+        if (id == null) {
+            return Optional.empty();
+        }
         return Optional.ofNullable(buckets.get(id.toLowerCase(Locale.ROOT)));
     }
 
@@ -107,6 +113,10 @@ public final class BucketRegistry {
 
         meta.setLore(lore);
 
+        // enchant glow
+        meta.addEnchant(Enchantment.UNBREAKING, 1, true);
+        meta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+
         item.setItemMeta(meta);
 
         return item;
@@ -133,16 +143,16 @@ public final class BucketRegistry {
 
             ItemStack test = createItem(def, 1);
 
-            if (!test.hasItemMeta()) continue;
+            if (!test.hasItemMeta()) {
+                continue;
+            }
 
             ItemMeta testMeta = test.getItemMeta();
 
             if (testMeta != null && testMeta.hasDisplayName()) {
-
                 if (heldName.equals(testMeta.getDisplayName())) {
                     return Optional.of(def);
                 }
-
             }
         }
 
