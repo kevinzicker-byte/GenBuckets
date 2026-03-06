@@ -1,197 +1,89 @@
 package com.thins.genbuckets;
 
+import org.bukkit.Bukkit;
 import org.bukkit.Material;
-import org.bukkit.block.Block;
-import org.bukkit.block.BlockFace;
-import org.bukkit.entity.Player;
-import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
 
-public final class GenManager {
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+
+public final class GuiManager {
     private final GenBucketsPlugin plugin;
 
-    public GenManager(GenBucketsPlugin plugin) {
+    public GuiManager(GenBucketsPlugin plugin) {
         this.plugin = plugin;
     }
 
-    public boolean startGen(Player player, Block clickedBlock, BlockFace clickedFace, GenBucketDefinition def) {
-        if (clickedBlock == null || clickedFace == null || def == null) {
-            return false;
+    public Inventory createMainMenu() {
+        String title = BucketRegistry.color(plugin.getConfig().getString("gui.title", "&d&lGen Buckets"));
+        int size = plugin.getConfig().getInt("gui.size", 27);
+
+        Inventory inv = Bukkit.createInventory(null, size, title);
+
+        // Optional filler
+        Material fillerMat = Material.GRAY_STAINED_GLASS_PANE;
+        String fillerName = " ";
+        ConfigurationSection fillerSection = plugin.getConfig().getConfigurationSection("gui.filler");
+        if (fillerSection != null) {
+            Material parsed = Material.matchMaterial(fillerSection.getString("material", "GRAY_STAINED_GLASS_PANE"));
+            if (parsed != null) fillerMat = parsed;
+            fillerName = BucketRegistry.color(fillerSection.getString("name", " "));
         }
 
-        Block start = findGenStart(clickedBlock, clickedFace, def);
-        if (start == null) {
-            return false;
+        ItemStack filler = new ItemStack(fillerMat);
+        ItemMeta fillerMeta = filler.getItemMeta();
+        if (fillerMeta != null) {
+            fillerMeta.setDisplayName(fillerName);
+            filler.setItemMeta(fillerMeta);
         }
 
-        if (start.getType() == anchorBlock()) {
-            return false;
+        for (int i = 0; i < size; i++) {
+            inv.setItem(i, filler);
         }
 
-        start.setType(anchorBlock(), false);
+        plugin.getBucketRegistry().all().stream()
+                .filter(GenBucketDefinition::enabled)
+                .sorted(Comparator.comparingInt(GenBucketDefinition::slot))
+                .forEach(def -> {
+                    ItemStack guiItem = createGuiDisplayItem(def);
+                    int slot = def.slot();
 
-        switch (def.mode()) {
-            case HORIZONTAL -> runHorizontal(start, clickedFace, def);
-            case VERTICAL_UP -> runVertical(start, BlockFace.UP, def);
-            case VERTICAL_DOWN -> runVertical(start, BlockFace.DOWN, def);
+                    if (slot >= 0 && slot < size) {
+                        inv.setItem(slot, guiItem);
+                    }
+                });
+
+        return inv;
+    }
+
+    private ItemStack createGuiDisplayItem(GenBucketDefinition def) {
+        Material displayMat = def.placeMaterial();
+        if (displayMat == null || displayMat == Material.AIR) {
+            displayMat = Material.STONE;
         }
 
-        if (plugin.isDebug()) {
-            plugin.getLogger().info("Started gen " + def.id() + " at " + start.getLocation());
+        ItemStack item = new ItemStack(displayMat);
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null) {
+            return item;
         }
 
-        return true;
-    }
+        meta.setDisplayName(BucketRegistry.color(def.name()));
 
-    private Block findGenStart(Block clickedBlock, BlockFace clickedFace, GenBucketDefinition def) {
-        Material finalMaterial = def.placeMaterial();
-        Material anchor = anchorBlock();
-
-        Block current;
-        if (def.mode() == GenMode.HORIZONTAL) {
-            current = clickedBlock.getRelative(clickedFace);
-        } else if (def.mode() == GenMode.VERTICAL_UP) {
-            current = clickedBlock.getRelative(BlockFace.UP);
-        } else {
-            current = clickedBlock.getRelative(BlockFace.DOWN);
+        List<String> lore = new ArrayList<>();
+        for (String line : def.lore()) {
+            lore.add(BucketRegistry.color(line));
         }
+        lore.add("");
+        lore.add(BucketRegistry.color("&8Click to receive this gen bucket"));
 
-        for (int i = 0; i < 512; i++) {
-            Material type = current.getType();
+        meta.setLore(lore);
+        item.setItemMeta(meta);
 
-            if (isReplaceableStart(type)) {
-                return current;
-            }
-
-            // chain gens: click old anchor or finished line and keep moving forward
-            if (type == anchor || type == finalMaterial) {
-                current = advance(current, clickedFace, def.mode());
-                continue;
-            }
-
-            return null;
-        }
-
-        return null;
-    }
-
-    private Block advance(Block current, BlockFace clickedFace, GenMode mode) {
-        return switch (mode) {
-            case HORIZONTAL -> current.getRelative(clickedFace);
-            case VERTICAL_UP -> current.getRelative(BlockFace.UP);
-            case VERTICAL_DOWN -> current.getRelative(BlockFace.DOWN);
-        };
-    }
-
-    private boolean isReplaceableStart(Material type) {
-        return type.isAir()
-                || type == Material.CAVE_AIR
-                || type == Material.VOID_AIR
-                || type == Material.WATER
-                || type == Material.LAVA;
-    }
-
-    private boolean canContinueInto(Block block, Material finalMaterial) {
-        Material type = block.getType();
-        Material anchor = anchorBlock();
-
-        return type.isAir()
-                || type == Material.CAVE_AIR
-                || type == Material.VOID_AIR
-                || type == Material.WATER
-                || type == Material.LAVA
-                || type == anchor
-                || type == finalMaterial;
-    }
-
-    private void runHorizontal(Block anchor, BlockFace direction, GenBucketDefinition def) {
-        final Material place = def.placeMaterial();
-        final int max = def.maxLength() > 0 ? def.maxLength() : horizontalLength();
-        final long delay = delayTicks();
-
-        new BukkitRunnable() {
-            private Block current = anchor;
-            private int placed = 0;
-
-            @Override
-            public void run() {
-                if (placed >= max) {
-                    finishAnchor(anchor, place);
-                    cancel();
-                    return;
-                }
-
-                Block next = current.getRelative(direction);
-
-                if (!canContinueInto(next, place)) {
-                    finishAnchor(anchor, place);
-                    cancel();
-                    return;
-                }
-
-                next.setType(place, false);
-                current = next;
-                placed++;
-            }
-        }.runTaskTimer(plugin, delay, delay);
-    }
-
-    private void runVertical(Block anchor, BlockFace direction, GenBucketDefinition def) {
-        final Material place = def.placeMaterial();
-        final int minY = minY();
-        final int maxY = maxY();
-        final long delay = delayTicks();
-
-        new BukkitRunnable() {
-            private Block current = anchor;
-
-            @Override
-            public void run() {
-                Block next = current.getRelative(direction);
-                int y = next.getY();
-
-                if (y < minY || y > maxY) {
-                    finishAnchor(anchor, place);
-                    cancel();
-                    return;
-                }
-
-                if (!canContinueInto(next, place)) {
-                    finishAnchor(anchor, place);
-                    cancel();
-                    return;
-                }
-
-                next.setType(place, false);
-                current = next;
-            }
-        }.runTaskTimer(plugin, delay, delay);
-    }
-
-    private void finishAnchor(Block anchor, Material finalMaterial) {
-        if (anchor.getType() == anchorBlock()) {
-            anchor.setType(finalMaterial, false);
-        }
-    }
-
-    private Material anchorBlock() {
-        String raw = plugin.getConfig().getString("settings.anchor_block", "WHITE_WOOL");
-        Material mat = Material.matchMaterial(raw);
-        return mat != null ? mat : Material.WHITE_WOOL;
-    }
-
-    private int horizontalLength() {
-        return plugin.getConfig().getInt("settings.horizontal_length", 16);
-    }
-
-    private int minY() {
-        return plugin.getConfig().getInt("settings.min_y", 1);
-    }
-
-    private int maxY() {
-        return plugin.getConfig().getInt("settings.max_y", 255);
-    }
-
-    private long delayTicks() {
-        return plugin.getConfig().getLong("settings.delay_ticks", 2L);
+        return item;
     }
 }
