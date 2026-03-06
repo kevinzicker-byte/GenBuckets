@@ -54,7 +54,6 @@ public final class BucketListener implements Listener {
             return;
         }
 
-        // Infinite use
         player.updateInventory();
     }
 }
